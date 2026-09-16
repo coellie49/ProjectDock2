@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
 <style>
   :root{
     --bg:#EDEAE0;
@@ -162,7 +163,7 @@
   .field > label, .field > .field-label{
     display:block; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin-bottom:7px;
   }
-  input[type=text], input[type=url], textarea{
+  input[type=text], input[type=url], input[type=email], input[type=password], textarea{
     width:100%; background:var(--surface); border:1px solid var(--line); border-radius:2px;
     padding:11px 13px; font-family:var(--font-body); font-size:14px; color:var(--ink);
   }
@@ -182,6 +183,30 @@
   }
   .submit-btn:hover:not(:disabled){background:var(--accent-2);}
   .submit-btn:disabled{opacity:.5; cursor:not-allowed;}
+
+  /* --- detail page --- */
+  .detail-media{
+    max-width:720px; border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; background:var(--surface-2); margin-bottom:24px;
+  }
+  .detail-media img, .detail-media video{width:100%; display:block;}
+  .detail-desc{font-size:15px; line-height:1.75; max-width:65ch; margin:0 0 24px;}
+  .detail-cta{
+    display:inline-block; text-decoration:none; font-family:var(--font-mono); font-size:14px;
+    background:var(--accent); color:#fff; padding:12px 22px; border-radius:2px;
+  }
+  .detail-cta:hover{background:var(--accent-2);}
+
+  /* --- clickable cards --- */
+  .card{cursor:pointer;}
+
+  /* --- account tabs --- */
+  .tab-row{display:flex; gap:8px; margin-bottom:24px;}
+  .tab-btn{
+    font-family:var(--font-mono); font-size:13px; background:none; color:var(--ink-soft);
+    border:1px solid var(--line); border-radius:2px; padding:9px 16px; cursor:pointer;
+  }
+  .tab-btn.active{color:var(--accent); border-color:var(--accent); background:var(--surface);}
 </style>
 </head>
 <body>
@@ -203,6 +228,10 @@
     <button class="nav-btn" data-view="add">
       <img class="nav-icon" id="icon-add" alt="Ajouter">
       <span>Ajouter</span>
+    </button>
+    <button class="nav-btn" data-view="account">
+      <img class="nav-icon" id="icon-account" alt="Compte">
+      <span>Compte</span>
     </button>
   </nav>
 
@@ -226,7 +255,11 @@
     <!-- NOS PROJETS -->
     <section id="view-mine" class="view">
       <h1 class="section-heading">Nos projets</h1>
-      <p class="section-sub">Les projets que vous avez ajoutés au catalogue.</p>
+      <p class="section-sub">Les projets que vous avez ajoutés au catalogue, publics et privés.</p>
+      <div id="mine-guard" class="banner" hidden>
+        Connectez-vous pour voir vos projets.<br>
+        <button type="button" class="btn" id="mine-guard-btn">Se connecter / Créer un compte</button>
+      </div>
       <div class="grid" id="mine-grid"></div>
     </section>
 
@@ -243,6 +276,10 @@
       <p class="section-sub">Renseignez un aperçu, une façon d'y accéder et une description.</p>
 
       <div id="form-feedback" class="banner" hidden></div>
+      <div id="add-guard" class="banner" hidden>
+        Vous devez avoir un compte pour ajouter un projet.<br>
+        <button type="button" class="btn" id="add-guard-btn">Se connecter / Créer un compte</button>
+      </div>
 
       <form id="add-form" class="form-card" novalidate>
         <fieldset id="add-fieldset">
@@ -253,16 +290,12 @@
           </div>
 
           <div class="field">
-            <label for="f-creator">Nom du créateur ou de la créatrice</label>
-            <input type="text" id="f-creator" name="creator" required>
-          </div>
-
-          <div class="field">
-            <span class="field-label">Ce projet va dans</span>
+            <span class="field-label">Visibilité</span>
             <div class="radio-row">
-              <label><input type="radio" name="category" value="mine" checked> Nos projets</label>
-              <label><input type="radio" name="category" value="community"> Projets à partager (Explorer)</label>
+              <label><input type="radio" name="visibility" value="public" checked> Public (visible par tout le monde dans Explorer)</label>
+              <label><input type="radio" name="visibility" value="private"> Privé (visible seulement par vous)</label>
             </div>
+            <p class="hint">Dans les deux cas, le projet apparaît dans « Nos projets ». Seuls les projets publics apparaissent aussi dans « Explorer ».</p>
           </div>
 
           <div class="field">
@@ -291,11 +324,61 @@
       </form>
     </section>
 
+    <!-- COMPTE -->
+    <section id="view-account" class="view">
+      <h1 class="section-heading">Compte</h1>
+      <p class="section-sub">Créez un compte pour ajouter des projets sans ressaisir votre nom à chaque fois : c'est le pseudo de votre compte qui est utilisé automatiquement.</p>
+
+      <div id="account-banner" class="banner" hidden></div>
+
+      <div id="account-logged-out">
+        <div class="tab-row">
+          <button type="button" class="tab-btn active" id="tab-login">Se connecter</button>
+          <button type="button" class="tab-btn" id="tab-signup">Créer un compte</button>
+        </div>
+
+        <form id="login-form" class="form-card" novalidate>
+          <div class="field">
+            <label for="login-pseudo">Nom (pseudo)</label>
+            <input type="text" id="login-pseudo" required>
+          </div>
+          <div class="field">
+            <label for="login-password">Mot de passe</label>
+            <input type="password" id="login-password" required>
+          </div>
+          <button type="submit" class="submit-btn">Se connecter</button>
+        </form>
+
+        <form id="signup-form" class="form-card" novalidate hidden>
+          <div class="field">
+            <label for="signup-pseudo">Nom (pseudo)</label>
+            <input type="text" id="signup-pseudo" required>
+          </div>
+          <div class="field">
+            <label for="signup-password">Mot de passe (6 caractères minimum)</label>
+            <input type="password" id="signup-password" required>
+          </div>
+          <button type="submit" class="submit-btn">Créer mon compte</button>
+        </form>
+      </div>
+
+      <div id="account-logged-in" class="form-card" hidden>
+        <p>Connecté en tant que <strong id="account-name"></strong>.</p>
+        <button type="button" class="btn" id="logout-btn">Se déconnecter</button>
+      </div>
+    </section>
+
+    <!-- DÉTAIL D'UN PROJET -->
+    <section id="view-detail" class="view">
+      <button type="button" class="btn" id="detail-back" style="margin-top:0; margin-bottom:28px;">← Retour</button>
+      <div id="detail-content"></div>
+    </section>
+
   </main>
 </div>
 
 <script>
-  const state = { db:null, assets:null, projects:[] };
+  const state = { db:null, auth:null, currentUser:null, projects:[], lastNavView:'home' };
 
   // =========================================================================
   // CONFIGURATION FIREBASE — à remplir avec les infos de VOTRE projet Firebase
@@ -303,23 +386,32 @@
   // 1. Allez sur https://console.firebase.google.com et créez un projet (gratuit).
   // 2. Dans "Compilation" > "Firestore Database", cliquez "Créer une base de
   //    données" (mode production, région au choix).
-  // 3. Dans les règles de Firestore, remplacez temporairement le contenu
-  //    par ce qui suit (accès public en lecture/écriture) :
+  // 3. Dans "Compilation" > "Authentication", cliquez "Get started", puis
+  //    activez le fournisseur "E-mail/Mot de passe".
+  // 4. Dans les règles de Firestore, remplacez le contenu par ce qui suit
+  //    (les projets privés ne sont lisibles que par leur créateur connecté) :
   //
   //      rules_version = '2';
   //      service cloud.firestore {
   //        match /databases/{database}/documents {
-  //          match /{document=**} { allow read, write: if true; }
+  //          match /projects/{projectId} {
+  //            allow read: if resource.data.visibility != 'private'
+  //              || (request.auth != null && request.auth.uid == resource.data.ownerId);
+  //            allow create: if request.auth != null
+  //              && request.auth.uid == request.resource.data.ownerId;
+  //            allow update, delete: if request.auth != null
+  //              && request.auth.uid == resource.data.ownerId;
+  //          }
   //        }
   //      }
   //
-  // 4. Dans "Paramètres du projet" (icône ⚙️) > onglet "Général", descendez
+  // 5. Dans "Paramètres du projet" (icône ⚙️) > onglet "Général", descendez
   //    jusqu'à "Vos applications", cliquez sur l'icône Web "</>" pour créer
   //    une appli web, puis copiez l'objet firebaseConfig généré ci-dessous.
   //
   //    (Aucun compte de facturation Blaze n'est nécessaire : ce site
-  //    n'utilise que Firestore, qui reste gratuit sans carte bancaire.
-  //    Les images/vidéos et fichiers sont gérés par lien, pas par upload.)
+  //    n'utilise que Firestore et Authentication, gratuits sans carte
+  //    bancaire. Les images/vidéos et fichiers sont gérés par lien.)
   // =========================================================================
     const FIREBASE_CONFIG = {
     apiKey: "AIzaSyDNw5N_dfVUW8jvi-xshfL0g-RX-EInqGk",
@@ -344,15 +436,19 @@
   const ICON_MINE = 'vos projets.png';
   const ICON_COMMUNITY = 'découvrir.png';
   const ICON_ADD = 'ajouter.png';
+  const ICON_ACCOUNT = 'mon compte.png';
 
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('icon-home').src = ICON_HOME;
     document.getElementById('icon-mine').src = ICON_MINE;
     document.getElementById('icon-community').src = ICON_COMMUNITY;
     document.getElementById('icon-add').src = ICON_ADD;
+    document.getElementById('icon-account').src = ICON_ACCOUNT;
 
     setupNav();
     setupAddForm();
+    setupAccountForms();
+    setupDetailNav();
     init();
   });
 
@@ -363,15 +459,69 @@
   }
 
   function switchView(view){
-    document.querySelectorAll('.nav-btn').forEach(b=>{
-      const active = b.dataset.view === view;
-      b.classList.toggle('active', active);
-      if(active) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
-    });
+    if(view !== 'detail'){
+      document.querySelectorAll('.nav-btn').forEach(b=>{
+        const active = b.dataset.view === view;
+        b.classList.toggle('active', active);
+        if(active) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+      });
+      state.lastNavView = view;
+    }
     document.querySelectorAll('.view').forEach(v=>{
       v.classList.toggle('active', v.id === 'view-' + view);
     });
     window.scrollTo(0,0);
+  }
+
+  function setupDetailNav(){
+    document.getElementById('detail-back').addEventListener('click', ()=>switchView(state.lastNavView || 'home'));
+  }
+
+  function showDetail(id){
+    const p = state.projects.find(x=>x.id===id);
+    if(!p) return;
+    renderDetail(p);
+    switchView('detail');
+  }
+
+  function renderDetail(p){
+    const el = document.getElementById('detail-content');
+    el.innerHTML = '';
+
+    const media = document.createElement('div');
+    media.className = 'detail-media';
+    if(p.previewType === 'video'){
+      const v = document.createElement('video');
+      v.src = p.previewUrl; v.controls = true; v.playsInline = true;
+      media.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.src = p.previewUrl;
+      img.alt = 'Aperçu du projet ' + (p.title || '');
+      media.appendChild(img);
+    }
+
+    const h1 = document.createElement('h1');
+    h1.className = 'section-heading';
+    h1.textContent = p.title || 'Sans titre';
+
+    const byline = document.createElement('p');
+    byline.className = 'card-byline';
+    byline.style.marginBottom = '18px';
+    byline.textContent = 'Par ' + (p.creator || 'anonyme') + ' · ' + (p.visibility === 'private' ? 'Privé' : 'Public');
+
+    const desc = document.createElement('p');
+    desc.className = 'detail-desc';
+    desc.textContent = p.description || '';
+
+    const cta = document.createElement('a');
+    cta.className = 'detail-cta';
+    cta.href = p.downloadUrl;
+    cta.target = '_blank';
+    cta.rel = 'noopener noreferrer';
+    cta.textContent = 'Ouvrir le lien du projet';
+
+    el.append(media, h1, byline, desc, cta);
   }
 
   async function init(){
@@ -385,18 +535,149 @@
     try{
       if(!firebase.apps.length){ firebase.initializeApp(FIREBASE_CONFIG); }
       state.db = firebase.firestore();
+      state.auth = firebase.auth();
     }catch(e){
       console.error('Firebase init error', e);
-      state.db = null;
+      state.db = null; state.auth = null;
     }
-    if(!state.db){
+    if(!state.db || !state.auth){
       const el = document.getElementById('capability-banner');
       el.hidden = false;
       el.classList.add('error');
       el.textContent = "Impossible de se connecter à la base de données. Vérifiez votre configuration Firebase (FIREBASE_CONFIG) et votre connexion internet.";
       return;
     }
+    state.auth.onAuthStateChanged(user => {
+      state.currentUser = user;
+      updateAccountUI();
+      updateAddFormAccess();
+      renderAll();
+    });
     subscribeProjects();
+  }
+
+  function updateAccountUI(){
+    const out = document.getElementById('account-logged-out');
+    const inn = document.getElementById('account-logged-in');
+    if(state.currentUser){
+      out.hidden = true;
+      inn.hidden = false;
+      document.getElementById('account-name').textContent = state.currentUser.displayName || state.currentUser.email;
+    } else {
+      out.hidden = false;
+      inn.hidden = true;
+    }
+  }
+
+  function updateAddFormAccess(){
+    const guard = document.getElementById('add-guard');
+    const form = document.getElementById('add-form');
+    if(state.currentUser){
+      guard.hidden = true;
+      form.hidden = false;
+    } else {
+      guard.hidden = false;
+      form.hidden = true;
+    }
+  }
+
+  function setupAccountForms(){
+    document.getElementById('tab-login').addEventListener('click', ()=>switchAccountTab('login'));
+    document.getElementById('tab-signup').addEventListener('click', ()=>switchAccountTab('signup'));
+    document.getElementById('login-form').addEventListener('submit', handleLogin);
+    document.getElementById('signup-form').addEventListener('submit', handleSignup);
+    document.getElementById('logout-btn').addEventListener('click', handleLogout);
+    document.getElementById('add-guard-btn').addEventListener('click', ()=>switchView('account'));
+    document.getElementById('mine-guard-btn').addEventListener('click', ()=>switchView('account'));
+  }
+
+  function switchAccountTab(tab){
+    document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+    document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+    document.getElementById('login-form').hidden = tab !== 'login';
+    document.getElementById('signup-form').hidden = tab !== 'signup';
+  }
+
+  function normalizePseudo(pseudo){
+    return pseudo
+      .trim()
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  function pseudoToEmail(pseudo){
+    return normalizePseudo(pseudo) + '@catalogue.local';
+  }
+
+  function friendlyAuthError(err){
+    const map = {
+      'auth/email-already-in-use': "Ce pseudo est déjà utilisé, choisissez-en un autre.",
+      'auth/invalid-email': "Ce pseudo contient trop peu de caractères valides (lettres/chiffres), choisissez-en un autre.",
+      'auth/weak-password': "Le mot de passe doit contenir au moins 6 caractères.",
+      'auth/user-not-found': "Aucun compte ne correspond à ce pseudo.",
+      'auth/wrong-password': "Mot de passe incorrect.",
+      'auth/invalid-credential': "Pseudo ou mot de passe incorrect.",
+      'auth/too-many-requests': "Trop de tentatives, réessayez dans un instant."
+    };
+    return (err && map[err.code]) || "Une erreur est survenue, merci de réessayer.";
+  }
+
+  async function handleSignup(e){
+    e.preventDefault();
+    const banner = document.getElementById('account-banner');
+    banner.hidden = true; banner.className = 'banner';
+
+    const pseudo = document.getElementById('signup-pseudo').value.trim();
+    const password = document.getElementById('signup-password').value;
+    if(!pseudo || !password){
+      banner.textContent = 'Merci de remplir tous les champs.';
+      banner.classList.add('error'); banner.hidden = false;
+      return;
+    }
+    if(!normalizePseudo(pseudo)){
+      banner.textContent = 'Le pseudo doit contenir au moins une lettre ou un chiffre.';
+      banner.classList.add('error'); banner.hidden = false;
+      return;
+    }
+    try{
+      const cred = await state.auth.createUserWithEmailAndPassword(pseudoToEmail(pseudo), password);
+      await cred.user.updateProfile({ displayName: pseudo });
+      state.currentUser = state.auth.currentUser;
+      updateAccountUI();
+      updateAddFormAccess();
+      renderAll();
+      e.target.reset();
+    }catch(err){
+      banner.textContent = friendlyAuthError(err);
+      banner.classList.add('error'); banner.hidden = false;
+    }
+  }
+
+  async function handleLogin(e){
+    e.preventDefault();
+    const banner = document.getElementById('account-banner');
+    banner.hidden = true; banner.className = 'banner';
+
+    const pseudo = document.getElementById('login-pseudo').value.trim();
+    const password = document.getElementById('login-password').value;
+    if(!pseudo || !password){
+      banner.textContent = 'Merci de remplir tous les champs.';
+      banner.classList.add('error'); banner.hidden = false;
+      return;
+    }
+    try{
+      await state.auth.signInWithEmailAndPassword(pseudoToEmail(pseudo), password);
+      e.target.reset();
+    }catch(err){
+      banner.textContent = friendlyAuthError(err);
+      banner.classList.add('error'); banner.hidden = false;
+    }
+  }
+
+  async function handleLogout(){
+    await state.auth.signOut();
   }
 
   function subscribeProjects(){
@@ -410,9 +691,20 @@
   }
 
   function renderAll(){
-    renderGrid('home-examples', state.projects.slice(0,3), 'home');
-    renderGrid('mine-grid', state.projects.filter(p=>p.category==='mine'), 'mine');
-    renderGrid('community-grid', state.projects.filter(p=>p.category==='community'), 'community');
+    const publicProjects = state.projects.filter(p => p.visibility !== 'private');
+    renderGrid('home-examples', publicProjects.slice(0,3), 'home');
+    renderGrid('community-grid', publicProjects, 'community');
+
+    const mineGuard = document.getElementById('mine-guard');
+    const mineGrid = document.getElementById('mine-grid');
+    if(state.currentUser){
+      mineGuard.hidden = true;
+      mineGrid.hidden = false;
+      renderGrid('mine-grid', state.projects.filter(p => p.ownerId === state.currentUser.uid), 'mine');
+    } else {
+      mineGuard.hidden = false;
+      mineGrid.hidden = true;
+    }
   }
 
   function renderGrid(containerId, list, kind){
@@ -422,7 +714,7 @@
       el.appendChild(buildEmptyState(kind));
       return;
     }
-    list.forEach(p => el.appendChild(buildCard(p)));
+    list.forEach(p => el.appendChild(buildCard(p, kind)));
   }
 
   function buildEmptyState(kind){
@@ -451,9 +743,10 @@
     return wrap;
   }
 
-  function buildCard(p){
+  function buildCard(p, kind){
     const card = document.createElement('article');
     card.className = 'card';
+    card.addEventListener('click', () => showDetail(p.id));
 
     const media = document.createElement('div');
     media.className = 'card-media';
@@ -477,7 +770,7 @@
 
     const byline = document.createElement('p');
     byline.className = 'card-byline';
-    byline.textContent = 'Par ' + (p.creator || 'anonyme');
+    byline.textContent = 'Par ' + (p.creator || 'anonyme') + (kind === 'mine' ? ' · ' + (p.visibility === 'private' ? 'Privé' : 'Public') : '');
 
     const desc = document.createElement('p');
     desc.className = 'card-desc';
@@ -489,6 +782,7 @@
     cta.target = '_blank';
     cta.rel = 'noopener noreferrer';
     cta.textContent = 'Ouvrir le lien du projet';
+    cta.addEventListener('click', ev => ev.stopPropagation());
 
     body.append(h3, byline, desc, cta);
     card.append(media, body);
@@ -530,16 +824,21 @@
       feedback.hidden = false;
       return;
     }
+    if(!state.currentUser){
+      feedback.textContent = "Vous devez être connecté pour ajouter un projet.";
+      feedback.classList.add('error');
+      feedback.hidden = false;
+      return;
+    }
 
     const title = document.getElementById('f-title').value.trim();
-    const creator = document.getElementById('f-creator').value.trim();
     const description = document.getElementById('f-description').value.trim();
-    const category = form.querySelector('input[name="category"]:checked').value;
+    const visibility = form.querySelector('input[name="visibility"]:checked').value;
     const previewType = form.querySelector('input[name="preview-type"]:checked').value;
     const previewLink = document.getElementById('f-preview-link').value.trim();
     const downloadLink = document.getElementById('f-download-link').value.trim();
 
-    if(!title || !creator || !description || !previewLink || !downloadLink){
+    if(!title || !description || !previewLink || !downloadLink){
       feedback.textContent = 'Merci de remplir tous les champs, y compris l’aperçu.';
       feedback.classList.add('error');
       feedback.hidden = false;
@@ -568,7 +867,10 @@
 
     try{
       await state.db.collection('projects').add({
-        title, creator, description, category,
+        title, description,
+        creator: state.currentUser.displayName || state.currentUser.email,
+        ownerId: state.currentUser.uid,
+        visibility,
         previewType, previewUrl: previewUrlValue,
         downloadUrl: downloadUrlValue,
         createdAt: Date.now()
@@ -576,10 +878,10 @@
 
       form.reset();
 
-      feedback.textContent = 'Projet publié. Vous le retrouverez dans « ' + (category === 'mine' ? 'Nos projets' : 'Explorer') + ' ».';
+      feedback.textContent = 'Projet publié dans « Nos projets »' + (visibility === 'public' ? ', et visible dans « Explorer ».' : ', en privé.');
       feedback.classList.add('success');
       feedback.hidden = false;
-      setTimeout(()=>switchView(category === 'mine' ? 'mine' : 'community'), 900);
+      setTimeout(()=>switchView('mine'), 900);
     }catch(err){
       feedback.textContent = friendlyError(err);
       feedback.classList.add('error');
