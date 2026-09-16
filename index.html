@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
+<title>Le Catalogue — vos projets, rangés</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg:#EDEAE0;
+    --surface:#FBF9F3;
+    --surface-2:#F3EFE3;
+    --ink:#23291F;
+    --ink-soft:#5B6357;
+    --accent:#2F6F63;
+    --accent-2:#C99A3A;
+    --line:#C9C2AE;
+    --danger:#A5432F;
+    --radius:3px;
+    --sidebar-w:104px;
+    --font-display:'Fraunces', Georgia, 'Times New Roman', serif;
+    --font-mono:'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+    --font-body:'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#171D1A; --surface:#1F2721; --surface-2:#232B24;
+      --ink:#E7E3D6; --ink-soft:#A9AE9C;
+      --accent:#57B39F; --accent-2:#E0B45A; --line:#33392F; --danger:#E08469;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#171D1A; --surface:#1F2721; --surface-2:#232B24;
+    --ink:#E7E3D6; --ink-soft:#A9AE9C;
+    --accent:#57B39F; --accent-2:#E0B45A; --line:#33392F; --danger:#E08469;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0; padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:var(--font-body);
+    -webkit-font-smoothing:antialiased;
+  }
+  img,video{max-width:100%;}
+
+  a{color:inherit;}
+  button{font:inherit; color:inherit;}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+  .shell{display:flex; min-height:100vh;}
+
+  /* --- sidebar --- */
+  .sidebar{
+    width:var(--sidebar-w); flex-shrink:0;
+    background:var(--surface-2);
+    border-right:1px dashed var(--line);
+    display:flex; flex-direction:column; align-items:stretch;
+    padding:22px 0; position:sticky; top:0; height:100vh; overflow-y:auto;
+  }
+  .nav-btn{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    background:none; border:none; border-left:3px solid transparent;
+    color:var(--ink-soft); font-family:var(--font-mono); font-size:11px;
+    padding:14px 6px; cursor:pointer; transition:color .15s ease, border-color .15s ease, background-color .15s ease;
+  }
+  .nav-btn:hover{color:var(--ink);}
+  .nav-btn.active{color:var(--accent); border-left-color:var(--accent); background:var(--surface);}
+  .nav-icon{width:28px; height:28px; display:block; border-radius:6px; object-fit:contain;}
+
+  /* --- content --- */
+  .content{flex:1; padding:52px 56px 80px; max-width:1120px;}
+  @media (max-width:760px){
+    .shell{flex-direction:column;}
+    .sidebar{
+      width:100%; height:auto; position:sticky; top:0; z-index:10;
+      flex-direction:row; justify-content:space-around;
+      border-right:none; border-bottom:1px dashed var(--line); padding:8px 0;
+    }
+    .nav-btn{flex-direction:row; gap:6px; border-left:none; border-bottom:3px solid transparent; padding:10px 8px;}
+    .nav-btn.active{border-left-color:transparent; border-bottom-color:var(--accent);}
+    .nav-btn span{display:none;}
+    .content{padding:32px 20px 64px;}
+  }
+
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .banner{
+    border:1px solid var(--line); background:var(--surface-2);
+    padding:13px 16px; border-radius:var(--radius); font-size:13px;
+    margin-bottom:26px; color:var(--ink-soft); max-width:60ch;
+  }
+  .banner.error{border-color:var(--danger); color:var(--danger);}
+  .banner.success{border-color:var(--accent); color:var(--accent);}
+
+  /* --- hero / headings --- */
+  .hero h1{
+    font-family:var(--font-display); font-weight:600;
+    font-size:clamp(28px,4vw,44px); line-height:1.15;
+    max-width:17ch; margin:0 0 18px;
+  }
+  .hero p{font-size:16px; line-height:1.65; color:var(--ink-soft); max-width:62ch; margin:0 0 6px;}
+
+  .section-heading{
+    font-family:var(--font-display); font-weight:600; font-size:24px; margin:0 0 6px;
+  }
+  .section-sub{color:var(--ink-soft); font-size:14px; margin:0 0 30px; max-width:60ch;}
+  .home-examples{margin-top:56px;}
+
+  /* --- grid / cards --- */
+  .grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(250px,1fr)); gap:22px;}
+
+  .card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; display:flex; flex-direction:column; position:relative;
+  }
+  .card::before{
+    content:""; position:absolute; top:13px; left:13px; width:8px; height:8px;
+    border-radius:50%; background:var(--bg); border:1px solid var(--line); z-index:2;
+  }
+  .card-media{aspect-ratio:16/10; background:var(--surface-2); overflow:hidden;}
+  .card-media img, .card-media video{width:100%; height:100%; object-fit:cover; display:block;}
+  .card-body{padding:18px 18px 20px; display:flex; flex-direction:column; gap:8px; flex:1;}
+  .card-title{font-family:var(--font-display); font-weight:600; font-size:18px; margin:0; line-height:1.3;}
+  .card-byline{font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin:0;}
+  .card-desc{
+    font-size:14px; line-height:1.55; margin:0; flex:1;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .card-cta{
+    align-self:flex-start; margin-top:6px; font-family:var(--font-mono); font-size:13px;
+    text-decoration:none; color:var(--accent); border-bottom:1px solid var(--accent); padding-bottom:1px;
+  }
+  .card-cta:hover{color:var(--accent-2); border-color:var(--accent-2);}
+
+  /* --- empty state --- */
+  .empty{
+    border:1px dashed var(--line); border-radius:var(--radius);
+    padding:38px 28px; color:var(--ink-soft); max-width:56ch;
+  }
+  .empty strong{
+    display:block; color:var(--ink); font-family:var(--font-display);
+    font-size:18px; font-weight:600; margin-bottom:8px;
+  }
+  .btn{
+    font-family:var(--font-mono); font-size:13px; background:var(--accent); color:#fff;
+    border:none; padding:11px 18px; border-radius:2px; cursor:pointer; margin-top:16px; display:inline-block;
+  }
+  .btn:hover{background:var(--accent-2);}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+
+  /* --- form --- */
+  .form-card{max-width:620px;}
+  fieldset{border:none; padding:0; margin:0;}
+  .field{margin-bottom:24px;}
+  .field > label, .field > .field-label{
+    display:block; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); margin-bottom:7px;
+  }
+  input[type=text], input[type=url], textarea{
+    width:100%; background:var(--surface); border:1px solid var(--line); border-radius:2px;
+    padding:11px 13px; font-family:var(--font-body); font-size:14px; color:var(--ink);
+  }
+  input[type=file]{
+    width:100%; font-size:13px; color:var(--ink-soft);
+    font-family:var(--font-body);
+  }
+  textarea{min-height:110px; resize:vertical;}
+  .radio-row{display:flex; gap:20px; flex-wrap:wrap;}
+  .radio-row label{
+    display:flex; align-items:center; gap:7px; font-size:14px; color:var(--ink); cursor:pointer;
+  }
+  .hint{font-size:12px; color:var(--ink-soft); margin-top:7px; line-height:1.5;}
+  .submit-btn{
+    font-family:var(--font-mono); font-size:14px; background:var(--accent); color:#fff;
+    border:none; padding:13px 24px; border-radius:2px; cursor:pointer;
+  }
+  .submit-btn:hover:not(:disabled){background:var(--accent-2);}
+  .submit-btn:disabled{opacity:.5; cursor:not-allowed;}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="sidebar" aria-label="Navigation principale">
+    <button class="nav-btn active" data-view="home" aria-current="page">
+      <img class="nav-icon" id="icon-home" alt="Accueil">
+      <span>Accueil</span>
+    </button>
+    <button class="nav-btn" data-view="mine">
+      <img class="nav-icon" id="icon-mine" alt="Nos projets">
+      <span>Nos projets</span>
+    </button>
+    <button class="nav-btn" data-view="community">
+      <img class="nav-icon" id="icon-community" alt="Explorer">
+      <span>Explorer</span>
+    </button>
+    <button class="nav-btn" data-view="add">
+      <img class="nav-icon" id="icon-add" alt="Ajouter">
+      <span>Ajouter</span>
+    </button>
+  </nav>
+
+  <main class="content">
+
+    <div id="capability-banner" class="banner" hidden></div>
+
+    <!-- ACCUEIL -->
+    <section id="view-home" class="view active">
+      <div class="hero">
+        <h1>Un catalogue pour garder trace de vos projets.</h1>
+        <p>Ce site réunit les projets que vous ajoutez : un aperçu, une description et une façon d'y accéder, en téléchargement ou par un lien. D'autres personnes peuvent aussi y déposer les leurs — retrouvez-les dans l'onglet Explorer.</p>
+      </div>
+      <div class="home-examples">
+        <h2 class="section-heading">Derniers ajouts</h2>
+        <p class="section-sub">Les projets les plus récents du catalogue, tous auteurs confondus.</p>
+        <div class="grid" id="home-examples"></div>
+      </div>
+    </section>
+
+    <!-- NOS PROJETS -->
+    <section id="view-mine" class="view">
+      <h1 class="section-heading">Nos projets</h1>
+      <p class="section-sub">Les projets que vous avez ajoutés au catalogue.</p>
+      <div class="grid" id="mine-grid"></div>
+    </section>
+
+    <!-- EXPLORER -->
+    <section id="view-community" class="view">
+      <h1 class="section-heading">Explorer</h1>
+      <p class="section-sub">Les projets partagés par d'autres personnes.</p>
+      <div class="grid" id="community-grid"></div>
+    </section>
+
+    <!-- AJOUTER -->
+    <section id="view-add" class="view">
+      <h1 class="section-heading">Ajouter un projet</h1>
+      <p class="section-sub">Renseignez un aperçu, une façon d'y accéder et une description.</p>
+
+      <div id="form-feedback" class="banner" hidden></div>
+
+      <form id="add-form" class="form-card" novalidate>
+        <fieldset id="add-fieldset">
+
+          <div class="field">
+            <label for="f-title">Titre du projet</label>
+            <input type="text" id="f-title" name="title" required>
+          </div>
+
+          <div class="field">
+            <label for="f-creator">Nom du créateur ou de la créatrice</label>
+            <input type="text" id="f-creator" name="creator" required>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Ce projet va dans</span>
+            <div class="radio-row">
+              <label><input type="radio" name="category" value="mine" checked> Nos projets</label>
+              <label><input type="radio" name="category" value="community"> Projets à partager (Explorer)</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Aperçu</span>
+            <div class="radio-row" style="margin-bottom:10px;">
+              <label><input type="radio" name="preview-type" value="image" checked> Image</label>
+              <label><input type="radio" name="preview-type" value="video"> Vidéo</label>
+            </div>
+            <input type="url" id="f-preview-link" placeholder="https://…" required>
+            <p class="hint">Collez un lien direct vers une image ou une vidéo (ex : un lien Imgur, un fichier hébergé sur Google Drive/Dropbox en partage public, etc.).</p>
+          </div>
+
+          <div class="field">
+            <span class="field-label">Accès au projet</span>
+            <input type="url" id="f-download-link" placeholder="https://…" required>
+            <p class="hint">Lien vers le projet (GitHub, Drive, site web…).</p>
+          </div>
+
+          <div class="field">
+            <label for="f-description">Description</label>
+            <textarea id="f-description" required></textarea>
+          </div>
+
+          <button type="submit" class="submit-btn" id="add-submit">Publier le projet</button>
+        </fieldset>
+      </form>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  const state = { db:null, assets:null, projects:[] };
+
+  // =========================================================================
+  // CONFIGURATION FIREBASE — à remplir avec les infos de VOTRE projet Firebase
+  //
+  // 1. Allez sur https://console.firebase.google.com et créez un projet (gratuit).
+  // 2. Dans "Compilation" > "Firestore Database", cliquez "Créer une base de
+  //    données" (mode production, région au choix).
+  // 3. Dans les règles de Firestore, remplacez temporairement le contenu
+  //    par ce qui suit (accès public en lecture/écriture) :
+  //
+  //      rules_version = '2';
+  //      service cloud.firestore {
+  //        match /databases/{database}/documents {
+  //          match /{document=**} { allow read, write: if true; }
+  //        }
+  //      }
+  //
+  // 4. Dans "Paramètres du projet" (icône ⚙️) > onglet "Général", descendez
+  //    jusqu'à "Vos applications", cliquez sur l'icône Web "</>" pour créer
+  //    une appli web, puis copiez l'objet firebaseConfig généré ci-dessous.
+  //
+  //    (Aucun compte de facturation Blaze n'est nécessaire : ce site
+  //    n'utilise que Firestore, qui reste gratuit sans carte bancaire.
+  //    Les images/vidéos et fichiers sont gérés par lien, pas par upload.)
+  // =========================================================================
+    const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyDNw5N_dfVUW8jvi-xshfL0g-RX-EInqGk",
+    authDomain: "projet-stockage-ac99a.firebaseapp.com",
+    projectId: "projet-stockage-ac99a",
+    storageBucket: "projet-stockage-ac99a.firebasestorage.app",
+    messagingSenderId: "145326939189",
+    appId: "1:145326939189:web:b375ec0a3cf4d5e06be57c",
+    measurementId: "G-K0B5EMBL2S"
+  };
+
+  // =========================================================================
+  // CONFIGURATION DES ICÔNES DU MENU
+  //
+  // Vous pouvez remplacer ci-dessous les liens par :
+  // 1. Un chemin vers un fichier local : 'images/accueil.png'
+  // 2. Une URL d'image en ligne : 'https://example.com/icon.svg'
+  // 3. Une image encodée en Base64 : 'data:image/png;base64,...'
+  // =========================================================================
+
+  const ICON_HOME = 'accueil.png';
+  const ICON_MINE = 'vos projets.png';
+  const ICON_COMMUNITY = 'découvrir.png';
+  const ICON_ADD = 'ajouter.png';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('icon-home').src = ICON_HOME;
+    document.getElementById('icon-mine').src = ICON_MINE;
+    document.getElementById('icon-community').src = ICON_COMMUNITY;
+    document.getElementById('icon-add').src = ICON_ADD;
+
+    setupNav();
+    setupAddForm();
+    init();
+  });
+
+  function setupNav(){
+    document.querySelectorAll('.nav-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>switchView(btn.dataset.view));
+    });
+  }
+
+  function switchView(view){
+    document.querySelectorAll('.nav-btn').forEach(b=>{
+      const active = b.dataset.view === view;
+      b.classList.toggle('active', active);
+      if(active) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current');
+    });
+    document.querySelectorAll('.view').forEach(v=>{
+      v.classList.toggle('active', v.id === 'view-' + view);
+    });
+    window.scrollTo(0,0);
+  }
+
+  async function init(){
+    if(!FIREBASE_CONFIG.apiKey || FIREBASE_CONFIG.apiKey === 'VOTRE_API_KEY'){
+      const el = document.getElementById('capability-banner');
+      el.hidden = false;
+      el.classList.add('error');
+      el.textContent = "Le catalogue n'est pas encore configuré : ouvrez le fichier HTML dans un éditeur de texte et remplissez l'objet FIREBASE_CONFIG avec les infos de votre projet Firebase (voir les instructions en commentaire juste au-dessus, dans le code).";
+      return;
+    }
+    try{
+      if(!firebase.apps.length){ firebase.initializeApp(FIREBASE_CONFIG); }
+      state.db = firebase.firestore();
+    }catch(e){
+      console.error('Firebase init error', e);
+      state.db = null;
+    }
+    if(!state.db){
+      const el = document.getElementById('capability-banner');
+      el.hidden = false;
+      el.classList.add('error');
+      el.textContent = "Impossible de se connecter à la base de données. Vérifiez votre configuration Firebase (FIREBASE_CONFIG) et votre connexion internet.";
+      return;
+    }
+    subscribeProjects();
+  }
+
+  function subscribeProjects(){
+    state.db.collection('projects').orderBy('createdAt','desc').limit(300).onSnapshot(
+      snap => {
+        state.projects = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+        renderAll();
+      },
+      err => { console.error('db onSnapshot error', err); }
+    );
+  }
+
+  function renderAll(){
+    renderGrid('home-examples', state.projects.slice(0,3), 'home');
+    renderGrid('mine-grid', state.projects.filter(p=>p.category==='mine'), 'mine');
+    renderGrid('community-grid', state.projects.filter(p=>p.category==='community'), 'community');
+  }
+
+  function renderGrid(containerId, list, kind){
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    if(list.length === 0){
+      el.appendChild(buildEmptyState(kind));
+      return;
+    }
+    list.forEach(p => el.appendChild(buildCard(p)));
+  }
+
+  function buildEmptyState(kind){
+    const wrap = document.createElement('div');
+    wrap.className = 'empty';
+    const strong = document.createElement('strong');
+    const p = document.createElement('p');
+    p.style.margin = '0';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.textContent = 'Ajouter un projet';
+    btn.addEventListener('click', ()=>switchView('add'));
+
+    if(kind === 'home'){
+      strong.textContent = 'Le catalogue est vide pour l’instant.';
+      p.textContent = 'Ajoutez le premier projet pour qu’il apparaisse ici.';
+    } else if(kind === 'mine'){
+      strong.textContent = 'Aucun projet ici pour le moment.';
+      p.textContent = 'Ajoutez un projet pour commencer votre catalogue.';
+    } else {
+      strong.textContent = 'Personne n’a encore partagé de projet.';
+      p.textContent = 'Revenez plus tard, ou soyez la première personne à en ajouter un.';
+    }
+    wrap.append(strong, p, btn);
+    return wrap;
+  }
+
+  function buildCard(p){
+    const card = document.createElement('article');
+    card.className = 'card';
+
+    const media = document.createElement('div');
+    media.className = 'card-media';
+    if(p.previewType === 'video'){
+      const v = document.createElement('video');
+      v.src = p.previewUrl; v.muted = true; v.loop = true; v.playsInline = true; v.controls = true;
+      media.appendChild(v);
+    } else {
+      const img = document.createElement('img');
+      img.src = p.previewUrl;
+      img.alt = 'Aperçu du projet ' + (p.title || '');
+      media.appendChild(img);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const h3 = document.createElement('h3');
+    h3.className = 'card-title';
+    h3.textContent = p.title || 'Sans titre';
+
+    const byline = document.createElement('p');
+    byline.className = 'card-byline';
+    byline.textContent = 'Par ' + (p.creator || 'anonyme');
+
+    const desc = document.createElement('p');
+    desc.className = 'card-desc';
+    desc.textContent = p.description || '';
+
+    const cta = document.createElement('a');
+    cta.className = 'card-cta';
+    cta.href = p.downloadUrl;
+    cta.target = '_blank';
+    cta.rel = 'noopener noreferrer';
+    cta.textContent = 'Ouvrir le lien du projet';
+
+    body.append(h3, byline, desc, cta);
+    card.append(media, body);
+    return card;
+  }
+
+  function setupAddForm(){
+    const form = document.getElementById('add-form');
+    form.addEventListener('submit', handleAddSubmit);
+  }
+
+  function normalizeUrl(value){
+    try{ return new URL(value).toString(); }
+    catch(e){ return new URL('https://' + value).toString(); }
+  }
+
+  function friendlyError(err){
+    const code = err && err.code;
+    const map = {
+      invalid_argument: "Certaines informations ne sont pas valides.",
+      resource_exhausted: "Le service est temporairement surchargé, réessayez.",
+      quota_exceeded: "Le catalogue a atteint sa capacité maximale.",
+      'permission-denied': "Accès refusé par Firebase. Vérifiez les règles de sécurité Firestore de votre projet (voir les instructions en commentaire dans le code).",
+      'unavailable': "Impossible de joindre Firebase. Vérifiez votre connexion internet."
+    };
+    return (code && map[code]) || "Une erreur est survenue, merci de réessayer.";
+  }
+
+  async function handleAddSubmit(e){
+    e.preventDefault();
+    const form = e.target;
+    const feedback = document.getElementById('form-feedback');
+    feedback.hidden = true;
+    feedback.className = 'banner';
+
+    if(!state.db){
+      feedback.textContent = "Impossible d'ajouter un projet : la base de données n'est pas connectée (vérifiez votre configuration Firebase).";
+      feedback.classList.add('error');
+      feedback.hidden = false;
+      return;
+    }
+
+    const title = document.getElementById('f-title').value.trim();
+    const creator = document.getElementById('f-creator').value.trim();
+    const description = document.getElementById('f-description').value.trim();
+    const category = form.querySelector('input[name="category"]:checked').value;
+    const previewType = form.querySelector('input[name="preview-type"]:checked').value;
+    const previewLink = document.getElementById('f-preview-link').value.trim();
+    const downloadLink = document.getElementById('f-download-link').value.trim();
+
+    if(!title || !creator || !description || !previewLink || !downloadLink){
+      feedback.textContent = 'Merci de remplir tous les champs, y compris l’aperçu.';
+      feedback.classList.add('error');
+      feedback.hidden = false;
+      return;
+    }
+
+    let previewUrlValue, downloadUrlValue;
+    try{ previewUrlValue = normalizeUrl(previewLink); }
+    catch(err){
+      feedback.textContent = 'Le lien d’aperçu saisi ne semble pas valide.';
+      feedback.classList.add('error');
+      feedback.hidden = false;
+      return;
+    }
+    try{ downloadUrlValue = normalizeUrl(downloadLink); }
+    catch(err){
+      feedback.textContent = 'Le lien du projet saisi ne semble pas valide.';
+      feedback.classList.add('error');
+      feedback.hidden = false;
+      return;
+    }
+
+    const submitBtn = document.getElementById('add-submit');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Publication…';
+
+    try{
+      await state.db.collection('projects').add({
+        title, creator, description, category,
+        previewType, previewUrl: previewUrlValue,
+        downloadUrl: downloadUrlValue,
+        createdAt: Date.now()
+      });
+
+      form.reset();
+
+      feedback.textContent = 'Projet publié. Vous le retrouverez dans « ' + (category === 'mine' ? 'Nos projets' : 'Explorer') + ' ».';
+      feedback.classList.add('success');
+      feedback.hidden = false;
+      setTimeout(()=>switchView(category === 'mine' ? 'mine' : 'community'), 900);
+    }catch(err){
+      feedback.textContent = friendlyError(err);
+      feedback.classList.add('error');
+      feedback.hidden = false;
+    }finally{
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Publier le projet';
+    }
+  }
+</script>
+</body>
+</html>
