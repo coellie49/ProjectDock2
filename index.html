@@ -406,7 +406,7 @@
 </div>
 
 <script>
-  const state = { db:null, auth:null, currentUser:null, projects:[], lastNavView:'home', profileOwnerId:null };
+  const state = { db:null, auth:null, currentUser:null, projects:[], publicProjects:[], myProjects:[], myUnsub:null, lastNavView:'home', profileOwnerId:null };
 
   // =========================================================================
   // CONFIGURATION FIREBASE — à remplir avec les infos de VOTRE projet Firebase
@@ -619,7 +619,7 @@
       state.currentUser = user;
       updateAccountUI();
       updateAddFormAccess();
-      renderAll();
+      subscribeMyProjects(user ? user.uid : null);
     });
     subscribeProjects();
   }
@@ -756,14 +756,54 @@
     await state.auth.signOut();
   }
 
+  // On sépare volontairement en deux requêtes (au lieu d'une seule requête
+  // globale sur toute la collection) : avec les règles Firestore suggérées,
+  // une requête sans filtre "where" échouerait entièrement dès qu'un projet
+  // privé appartenant à quelqu'un d'autre existe dans la collection (Firestore
+  // rejette une requête "liste" si elle pourrait renvoyer un document non
+  // autorisé, même un seul, plutôt que de simplement l'omettre). Chacune des
+  // deux requêtes ci-dessous ne peut renvoyer que des documents que les
+  // règles autorisent explicitement, quel que soit le contenu de la base.
   function subscribeProjects(){
-    state.db.collection('projects').orderBy('createdAt','desc').limit(300).onSnapshot(
-      snap => {
-        state.projects = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
-        renderAll();
-      },
-      err => { console.error('db onSnapshot error', err); }
-    );
+    state.db.collection('projects')
+      .where('visibility', '==', 'public')
+      .orderBy('createdAt', 'desc')
+      .limit(300)
+      .onSnapshot(
+        snap => {
+          state.publicProjects = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+          mergeAndRenderProjects();
+        },
+        err => { console.error('db onSnapshot error (public)', err); }
+      );
+  }
+
+  function subscribeMyProjects(uid){
+    if(state.myUnsub){ state.myUnsub(); state.myUnsub = null; }
+    if(!uid){
+      state.myProjects = [];
+      mergeAndRenderProjects();
+      return;
+    }
+    state.myUnsub = state.db.collection('projects')
+      .where('ownerId', '==', uid)
+      .orderBy('createdAt', 'desc')
+      .limit(300)
+      .onSnapshot(
+        snap => {
+          state.myProjects = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+          mergeAndRenderProjects();
+        },
+        err => { console.error('db onSnapshot error (mine)', err); }
+      );
+  }
+
+  function mergeAndRenderProjects(){
+    const byId = new Map();
+    state.publicProjects.forEach(p => byId.set(p.id, p));
+    state.myProjects.forEach(p => byId.set(p.id, p));
+    state.projects = Array.from(byId.values());
+    renderAll();
   }
 
   function renderAll(){
