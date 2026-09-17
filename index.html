@@ -423,12 +423,12 @@
   //      service cloud.firestore {
   //        match /databases/{database}/documents {
   //          match /projects/{projectId} {
-  //            allow read: if resource.data.visibility != 'private'
-  //              || (request.auth != null && request.auth.uid == resource.data.ownerId);
+  //            allow read: if resource.data.get('visibility', 'public') != 'private'
+  //              || (request.auth != null && request.auth.uid == resource.data.get('ownerId', ''));
   //            allow create: if request.auth != null
   //              && request.auth.uid == request.resource.data.ownerId;
   //            allow update, delete: if request.auth != null
-  //              && request.auth.uid == resource.data.ownerId;
+  //              && request.auth.uid == resource.data.get('ownerId', '');
   //          }
   //          match /users/{uid} {
   //            allow read: if true;
@@ -468,7 +468,7 @@
   const ICON_MINE = 'vos projets.png';
   const ICON_COMMUNITY = 'découvrir.png';
   const ICON_ADD = 'ajouter.png';
-  const ICON_ACCOUNT = 'mon_compte.png';
+  const ICON_ACCOUNT = 'compte.png';
 
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('icon-home').src = ICON_HOME;
