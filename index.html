@@ -190,6 +190,8 @@
     overflow:hidden; background:var(--surface-2); margin-bottom:24px;
   }
   .detail-media img, .detail-media video{width:100%; display:block;}
+  .embed-wrap{position:relative; width:100%; padding-top:56.25%;}
+  .embed-wrap iframe{position:absolute; top:0; left:0; width:100%; height:100%; border:0; display:block;}
   .detail-desc{font-size:15px; line-height:1.75; max-width:65ch; margin:0 0 24px;}
   .detail-cta{
     display:inline-block; text-decoration:none; font-family:var(--font-mono); font-size:14px;
@@ -301,7 +303,7 @@
           <div class="field">
             <span class="field-label">Aperçu</span>
             <input type="url" id="f-preview-link" placeholder="https://…" required>
-            <p class="hint">Collez un lien direct vers une image ou une vidéo (ex : un lien Imgur, un fichier hébergé sur Google Drive/Dropbox en partage public, etc.). Le type (image ou vidéo) est détecté automatiquement.</p>
+            <p class="hint">Collez un lien direct vers une image ou une vidéo, ou un lien YouTube (ex : un lien Imgur, un fichier hébergé sur Google Drive/Dropbox en partage public, ou youtube.com/watch?v=…). Le type est détecté automatiquement.</p>
           </div>
 
           <div class="field">
@@ -737,7 +739,30 @@
     return wrap;
   }
 
+  function getYouTubeEmbedUrl(url){
+    let m = url.match(/youtu\.be\/([a-zA-Z0-9_-]{6,})/);
+    if(m) return 'https://www.youtube.com/embed/' + m[1];
+    m = url.match(/[?&]v=([a-zA-Z0-9_-]{6,})/);
+    if(m) return 'https://www.youtube.com/embed/' + m[1];
+    m = url.match(/youtube\.com\/(?:embed|shorts)\/([a-zA-Z0-9_-]{6,})/);
+    if(m) return 'https://www.youtube.com/embed/' + m[1];
+    return null;
+  }
+
   function buildMediaElement(url, altText){
+    const embedUrl = getYouTubeEmbedUrl(url);
+    if(embedUrl){
+      const wrap = document.createElement('div');
+      wrap.className = 'embed-wrap';
+      const iframe = document.createElement('iframe');
+      iframe.src = embedUrl;
+      iframe.title = altText;
+      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+      iframe.allowFullscreen = true;
+      wrap.appendChild(iframe);
+      return wrap;
+    }
+
     const wrapper = document.createElement('div');
     const img = document.createElement('img');
     img.src = url;
