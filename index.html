@@ -300,12 +300,8 @@
 
           <div class="field">
             <span class="field-label">Aperçu</span>
-            <div class="radio-row" style="margin-bottom:10px;">
-              <label><input type="radio" name="preview-type" value="image" checked> Image</label>
-              <label><input type="radio" name="preview-type" value="video"> Vidéo</label>
-            </div>
             <input type="url" id="f-preview-link" placeholder="https://…" required>
-            <p class="hint">Collez un lien direct vers une image ou une vidéo (ex : un lien Imgur, un fichier hébergé sur Google Drive/Dropbox en partage public, etc.).</p>
+            <p class="hint">Collez un lien direct vers une image ou une vidéo (ex : un lien Imgur, un fichier hébergé sur Google Drive/Dropbox en partage public, etc.). Le type (image ou vidéo) est détecté automatiquement.</p>
           </div>
 
           <div class="field">
@@ -436,7 +432,7 @@
   const ICON_MINE = 'vos projets.png';
   const ICON_COMMUNITY = 'découvrir.png';
   const ICON_ADD = 'ajouter.png';
-  const ICON_ACCOUNT = 'mon compte.png';
+  const ICON_ACCOUNT = 'compte.png';
 
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('icon-home').src = ICON_HOME;
@@ -490,16 +486,7 @@
 
     const media = document.createElement('div');
     media.className = 'detail-media';
-    if(p.previewType === 'video'){
-      const v = document.createElement('video');
-      v.src = p.previewUrl; v.controls = true; v.playsInline = true;
-      media.appendChild(v);
-    } else {
-      const img = document.createElement('img');
-      img.src = p.previewUrl;
-      img.alt = 'Aperçu du projet ' + (p.title || '');
-      media.appendChild(img);
-    }
+    media.appendChild(buildMediaElement(p.previewUrl, 'Aperçu du projet ' + (p.title || '')));
 
     const h1 = document.createElement('h1');
     h1.className = 'section-heading';
@@ -619,9 +606,16 @@
       'auth/user-not-found': "Aucun compte ne correspond à ce pseudo.",
       'auth/wrong-password': "Mot de passe incorrect.",
       'auth/invalid-credential': "Pseudo ou mot de passe incorrect.",
-      'auth/too-many-requests': "Trop de tentatives, réessayez dans un instant."
+      'auth/too-many-requests': "Trop de tentatives, réessayez dans un instant.",
+      'auth/operation-not-allowed': "La connexion par mot de passe n'est pas activée sur ce projet Firebase. Dans la console Firebase, allez dans Authentication > Sign-in method, et activez le fournisseur « E-mail/Mot de passe ».",
+      'auth/operation-not-supported-in-this-environment': "Firebase n'autorise pas la création de compte depuis un fichier ouvert directement (file://). Il faut héberger le site (GitHub Pages, Netlify, Firebase Hosting…) ou le lancer via un petit serveur local, puis y accéder par une adresse http(s)://.",
+      'auth/unauthorized-domain': "Ce site n'est pas dans la liste des domaines autorisés. Dans la console Firebase, allez dans Authentication > Settings > Authorized domains, et ajoutez le domaine depuis lequel vous ouvrez le site.",
+      'auth/network-request-failed': "Impossible de joindre Firebase, vérifiez votre connexion internet.",
+      'auth/configuration-not-found': "L'authentification n'est pas configurée sur ce projet Firebase. Dans la console Firebase, allez dans Authentication et cliquez sur « Get started »."
     };
-    return (err && map[err.code]) || "Une erreur est survenue, merci de réessayer.";
+    console.error('Erreur Firebase Auth :', err);
+    if(err && map[err.code]) return map[err.code];
+    return "Une erreur est survenue, merci de réessayer." + (err && err.code ? ' (code : ' + err.code + ')' : '');
   }
 
   async function handleSignup(e){
@@ -743,6 +737,26 @@
     return wrap;
   }
 
+  function buildMediaElement(url, altText){
+    const wrapper = document.createElement('div');
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = altText;
+    img.onerror = () => {
+      if(wrapper.contains(img)){
+        const v = document.createElement('video');
+        v.src = url;
+        v.controls = true;
+        v.playsInline = true;
+        v.muted = true;
+        v.loop = true;
+        wrapper.replaceChild(v, img);
+      }
+    };
+    wrapper.appendChild(img);
+    return wrapper;
+  }
+
   function buildCard(p, kind){
     const card = document.createElement('article');
     card.className = 'card';
@@ -750,16 +764,7 @@
 
     const media = document.createElement('div');
     media.className = 'card-media';
-    if(p.previewType === 'video'){
-      const v = document.createElement('video');
-      v.src = p.previewUrl; v.muted = true; v.loop = true; v.playsInline = true; v.controls = true;
-      media.appendChild(v);
-    } else {
-      const img = document.createElement('img');
-      img.src = p.previewUrl;
-      img.alt = 'Aperçu du projet ' + (p.title || '');
-      media.appendChild(img);
-    }
+    media.appendChild(buildMediaElement(p.previewUrl, 'Aperçu du projet ' + (p.title || '')));
 
     const body = document.createElement('div');
     body.className = 'card-body';
@@ -834,7 +839,6 @@
     const title = document.getElementById('f-title').value.trim();
     const description = document.getElementById('f-description').value.trim();
     const visibility = form.querySelector('input[name="visibility"]:checked').value;
-    const previewType = form.querySelector('input[name="preview-type"]:checked').value;
     const previewLink = document.getElementById('f-preview-link').value.trim();
     const downloadLink = document.getElementById('f-download-link').value.trim();
 
@@ -871,7 +875,7 @@
         creator: state.currentUser.displayName || state.currentUser.email,
         ownerId: state.currentUser.uid,
         visibility,
-        previewType, previewUrl: previewUrlValue,
+        previewUrl: previewUrlValue,
         downloadUrl: downloadUrlValue,
         createdAt: Date.now()
       });
