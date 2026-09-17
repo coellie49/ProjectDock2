@@ -211,9 +211,14 @@
   .tab-btn.active{color:var(--accent); border-color:var(--accent); background:var(--surface);}
 
   .site-logo{
-    position:fixed; top:18px; right:24px; z-index:100;
+    position:fixed; top:14px; right:24px; z-index:100;
     height:80px; width:auto; pointer-events:none;
   }
+
+  .creator-link{
+    cursor:pointer; text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;
+  }
+  .creator-link:hover{color:var(--accent);}
 </style>
 </head>
 <body>
@@ -298,6 +303,15 @@
           </div>
 
           <div class="field">
+            <span class="field-label">Statut du projet</span>
+            <div class="radio-row">
+              <label><input type="radio" name="status" value="in_progress"> En cours</label>
+              <label><input type="radio" name="status" value="finished" checked> Terminé</label>
+            </div>
+            <p class="hint">Un projet « en cours » passe automatiquement en privé (par praticité), mais vous pouvez quand même le remettre en public juste en dessous si vous le souhaitez.</p>
+          </div>
+
+          <div class="field">
             <span class="field-label">Visibilité</span>
             <div class="radio-row">
               <label><input type="radio" name="visibility" value="public" checked> Public (visible par tout le monde dans Explorer)</label>
@@ -378,11 +392,21 @@
       <div id="detail-content"></div>
     </section>
 
+    <!-- PROFIL D'UN COMPTE -->
+    <section id="view-profile" class="view">
+      <button type="button" class="btn" id="profile-back" style="margin-top:0; margin-bottom:28px;">← Retour</button>
+      <h1 class="section-heading" id="profile-name">Utilisateur</h1>
+      <p class="section-sub">
+        Inscrit(e) depuis <strong id="profile-joined">…</strong> · <strong id="profile-count">…</strong> projet(s) publié(s)
+      </p>
+      <div class="grid" id="profile-grid"></div>
+    </section>
+
   </main>
 </div>
 
 <script>
-  const state = { db:null, auth:null, currentUser:null, projects:[], lastNavView:'home' };
+  const state = { db:null, auth:null, currentUser:null, projects:[], lastNavView:'home', profileOwnerId:null };
 
   // =========================================================================
   // CONFIGURATION FIREBASE — à remplir avec les infos de VOTRE projet Firebase
@@ -405,6 +429,10 @@
   //              && request.auth.uid == request.resource.data.ownerId;
   //            allow update, delete: if request.auth != null
   //              && request.auth.uid == resource.data.ownerId;
+  //          }
+  //          match /users/{uid} {
+  //            allow read: if true;
+  //            allow create, update: if request.auth != null && request.auth.uid == uid;
   //          }
   //        }
   //      }
@@ -479,6 +507,41 @@
 
   function setupDetailNav(){
     document.getElementById('detail-back').addEventListener('click', ()=>switchView(state.lastNavView || 'home'));
+    document.getElementById('profile-back').addEventListener('click', ()=>switchView(state.lastNavView || 'home'));
+  }
+
+  function formatDate(ts){
+    if(!ts) return 'date inconnue';
+    return new Date(ts).toLocaleDateString('fr-FR', { day:'numeric', month:'long', year:'numeric' });
+  }
+
+  async function showProfile(ownerId, displayNameFallback){
+    if(!ownerId) return;
+    state.profileOwnerId = ownerId;
+    document.getElementById('profile-name').textContent = displayNameFallback || 'Utilisateur';
+    document.getElementById('profile-joined').textContent = '…';
+    switchView('profile');
+    renderProfileProjects();
+
+    try{
+      const doc = await state.db.collection('users').doc(ownerId).get();
+      if(doc.exists){
+        const data = doc.data();
+        document.getElementById('profile-name').textContent = data.pseudo || displayNameFallback || 'Utilisateur';
+        document.getElementById('profile-joined').textContent = formatDate(data.createdAt);
+      } else {
+        document.getElementById('profile-joined').textContent = 'inconnue';
+      }
+    }catch(err){
+      console.error('Erreur de chargement du profil :', err);
+      document.getElementById('profile-joined').textContent = 'inconnue';
+    }
+  }
+
+  function renderProfileProjects(){
+    const list = state.projects.filter(p => p.ownerId === state.profileOwnerId && p.visibility !== 'private');
+    document.getElementById('profile-count').textContent = list.length;
+    renderGrid('profile-grid', list, 'profile');
   }
 
   function showDetail(id){
@@ -503,7 +566,17 @@
     const byline = document.createElement('p');
     byline.className = 'card-byline';
     byline.style.marginBottom = '18px';
-    byline.textContent = 'Par ' + (p.creator || 'anonyme') + ' · ' + (p.visibility === 'private' ? 'Privé' : 'Public');
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = p.creator || 'anonyme';
+    if(p.ownerId){
+      nameSpan.className = 'creator-link';
+      nameSpan.addEventListener('click', () => showProfile(p.ownerId, p.creator));
+    }
+    byline.append(
+      'Par ', nameSpan,
+      ' · ' + (p.visibility === 'private' ? 'Privé' : 'Public') +
+      ' · ' + (p.status === 'in_progress' ? 'En cours' : 'Terminé')
+    );
 
     const desc = document.createElement('p');
     desc.className = 'detail-desc';
@@ -646,6 +719,7 @@
     try{
       const cred = await state.auth.createUserWithEmailAndPassword(pseudoToEmail(pseudo), password);
       await cred.user.updateProfile({ displayName: pseudo });
+      await state.db.collection('users').doc(cred.user.uid).set({ pseudo, createdAt: Date.now() });
       state.currentUser = state.auth.currentUser;
       updateAccountUI();
       updateAddFormAccess();
@@ -706,6 +780,9 @@
     } else {
       mineGuard.hidden = false;
       mineGrid.hidden = true;
+    }
+    if(state.profileOwnerId){
+      renderProfileProjects();
     }
   }
 
@@ -806,7 +883,19 @@
 
     const byline = document.createElement('p');
     byline.className = 'card-byline';
-    byline.textContent = 'Par ' + (p.creator || 'anonyme') + (kind === 'mine' ? ' · ' + (p.visibility === 'private' ? 'Privé' : 'Public') : '');
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = p.creator || 'anonyme';
+    if(p.ownerId){
+      nameSpan.className = 'creator-link';
+      nameSpan.addEventListener('click', ev => {
+        ev.stopPropagation();
+        showProfile(p.ownerId, p.creator);
+      });
+    }
+    const metaParts = [];
+    if(kind === 'mine'){ metaParts.push(p.visibility === 'private' ? 'Privé' : 'Public'); }
+    metaParts.push(p.status === 'in_progress' ? 'En cours' : 'Terminé');
+    byline.append('Par ', nameSpan, metaParts.length ? ' · ' + metaParts.join(' · ') : '');
 
     const desc = document.createElement('p');
     desc.className = 'card-desc';
@@ -827,6 +916,14 @@
 
   function setupAddForm(){
     const form = document.getElementById('add-form');
+    form.querySelectorAll('input[name="status"]').forEach(r => {
+      r.addEventListener('change', () => {
+        if(form.querySelector('input[name="status"]:checked').value === 'in_progress'){
+          const privateRadio = form.querySelector('input[name="visibility"][value="private"]');
+          if(privateRadio) privateRadio.checked = true;
+        }
+      });
+    });
     form.addEventListener('submit', handleAddSubmit);
   }
 
@@ -870,6 +967,7 @@
     const title = document.getElementById('f-title').value.trim();
     const description = document.getElementById('f-description').value.trim();
     const visibility = form.querySelector('input[name="visibility"]:checked').value;
+    const status = form.querySelector('input[name="status"]:checked').value;
     const previewLink = document.getElementById('f-preview-link').value.trim();
     const downloadLink = document.getElementById('f-download-link').value.trim();
 
@@ -905,7 +1003,7 @@
         title, description,
         creator: state.currentUser.displayName || state.currentUser.email,
         ownerId: state.currentUser.uid,
-        visibility,
+        visibility, status,
         previewUrl: previewUrlValue,
         downloadUrl: downloadUrlValue,
         createdAt: Date.now()
