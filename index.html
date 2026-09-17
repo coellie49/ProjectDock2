@@ -491,7 +491,12 @@
   }
 
   function switchView(view){
-    if(view !== 'detail'){
+    // "detail" et "profile" n'ont pas de bouton dans la barre latérale : on ne
+    // les mémorise donc pas comme "dernier onglet visité", sinon le bouton
+    // Retour de la page profil (par ex.) rappellerait switchView('profile')
+    // sur lui-même et ne ferait rien visuellement.
+    const isNavView = !!document.querySelector('.nav-btn[data-view="' + view + '"]');
+    if(isNavView){
       document.querySelectorAll('.nav-btn').forEach(b=>{
         const active = b.dataset.view === view;
         b.classList.toggle('active', active);
